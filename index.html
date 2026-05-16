@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Micro Quiz Mobile</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style id="dynamic-theme">
+        :root {
+            --bg: #f8f9fa; --card: #ffffff; --text: #212529;
+            --primary: #457b9d; --secondary: #a8dadc;
+            --success: #2d6a4f; --danger: #e63946;
+        }
+    </style>
+    <style>
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            background: var(--bg); color: var(--text); margin: 0; padding: 0;
+            display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+        }
+
+        /* Мобильное нижнее меню */
+        .tab-bar {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: var(--card); border-top: 1px solid rgba(0,0,0,0.1);
+            display: flex; justify-content: space-around; padding: 10px 0 calc(env(safe-area-inset-bottom) + 10px);
+            z-index: 1000;
+        }
+        .tab-item { background: none; border: none; color: var(--text); font-size: 11px; font-weight: 600; display: flex; flex-direction: column; align-items: center; gap: 4px; opacity: 0.6; }
+        .tab-item.active { color: var(--primary); opacity: 1; }
+        .tab-item i { font-size: 20px; font-style: normal; }
+
+        /* Контент */
+        .main-container { flex: 1; overflow-y: auto; padding: 15px 15px 100px; display: flex; justify-content: center; }
+        .card { background: var(--card); width: 100%; max-width: 500px; border-radius: 20px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); height: fit-content; }
+
+        .screen { display: none; }
+        .screen.active { display: block; animation: slideUp 0.3s ease-out; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+        h2 { margin: 0 0 20px; font-size: 22px; color: var(--primary); }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 12px; font-weight: 700; margin-bottom: 6px; opacity: 0.7; }
+        .form-input { width: 100%; padding: 12px; border: 2px solid var(--secondary); border-radius: 12px; font-size: 16px; background: var(--bg); color: var(--text); }
+
+        .btn { border: none; border-radius: 12px; padding: 14px; font-weight: 700; font-size: 15px; cursor: pointer; transition: 0.2s; width: 100%; }
+        .btn-main { background: var(--primary); color: white; }
+        .btn-ghost { background: var(--secondary); color: var(--primary); }
+        .btn-danger { background: var(--danger); color: white; margin-top: 10px; }
+
+        /* Вопросы */
+        .q-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .q-text { font-size: 18px; font-weight: 700; line-height: 1.4; margin-bottom: 20px; }
+        .option { width: 100%; padding: 14px; margin-bottom: 10px; border: 2px solid var(--bg); border-radius: 12px; background: var(--bg); text-align: left; font-size: 15px; }
+        .option.selected { border-color: var(--primary); background: rgba(69, 123, 157, 0.1); }
+        .option.correct { background: var(--success); color: white; border-color: var(--success); }
+        .option.wrong { background: var(--danger); color: white; border-color: var(--danger); }
+
+        /* Палитра */
+        .color-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; margin-bottom: 20px; }
+        .color-circle { height: 40px; border-radius: 10px; cursor: pointer; border: 2px solid rgba(0,0,0,0.1); }
+
+        .author { text-align: center; font-size: 12px; margin-top: 20px; opacity: 0.4; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="main-container">
+        <div id="main-screen" class="screen active card">
+            <h2>Начать тест</h2>
+            <div class="form-group">
+                <label>Диапазон</label>
+                <div style="display:flex; gap:10px;">
+                    <input type="number" id="s-start" class="form-input" value="1">
+                    <input type="number" id="s-end" class="form-input" value="301">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Количество вопросов</label>
+                <input type="number" id="s-count" class="form-input" value="20">
+            </div>
+            <button class="btn btn-main" onclick="startQuiz()">ПОЕХАЛИ</button>
+            <div class="author">@nurislombekm</div>
+        </div>
+
+        <div id="test-screen" class="screen card">
+            <div class="q-header">
+                <span id="q-progress" style="font-weight:bold">1/20</span>
+                <span id="timer" style="color:var(--danger); font-family:monospace; font-weight:bold;">10:00</span>
+                <button onclick="toggleFavCurrent()" id="fav-btn" style="background:none; border:none; font-size:24px;">☆</button>
+            </div>
+            <div id="q-text" class="q-text"></div>
+            <div id="options-box"></div>
+            <div style="display:grid; grid-template-columns: 1fr 2fr 1fr; gap:10px; margin-top:10px;">
+                <button class="btn btn-ghost" onclick="changeQ(-1)">←</button>
+                <button class="btn btn-main" id="confirm-btn" onclick="confirmAnswer()">ОТВЕТИТЬ</button>
+                <button class="btn btn-ghost" onclick="changeQ(1)">→</button>
+            </div>
+            <button class="btn btn-danger" onclick="if(confirm('Завершить?')) finishQuiz()">Завершить тест</button>
+        </div>
+
+        <div id="result-screen" class="screen card" style="text-align:center;">
+            <h2>Готово!</h2>
+            <div id="res-score" style="font-size:60px; font-weight:900; margin:20px 0;">0</div>
+            <button class="btn btn-main" onclick="showReview()">ОШИБКИ</button>
+            <button class="btn btn-ghost" style="margin-top:10px;" onclick="location.reload()">В МЕНЮ</button>
+        </div>
+
+        <div id="list-screen" class="screen card">
+            <h2 id="list-title">Список</h2>
+            <div id="list-container" style="max-height:60vh; overflow-y:auto;"></div>
+        </div>
+
+        <div id="palette-screen" class="screen card">
+            <h2>Палитра</h2>
+            <button class="btn btn-main" style="margin-bottom:15px;" onclick="generateRandomTheme()">МНЕ ПОВЕЗЕТ (Random)</button>
+            <div class="color-grid" id="color-presets"></div>
+        </div>
+    </div>
+
+    <div class="tab-bar">
+        <button class="tab-item active" onclick="nav('main-screen', this)"><i>🏠</i>Домой</button>
+        <button class="tab-item" onclick="nav('list-screen', this, 'study')"><i>📖</i>Учить</button>
+        <button class="tab-item" onclick="nav('list-screen', this, 'favs')"><i>⭐</i>Избранное</button>
+        <button class="tab-item" onclick="nav('palette-screen', this)"><i>🎨</i>Цвет</button>
+    </div>
+
+    <script>
+        const BOT_TOKEN = '8595875715:AAEyZCMlpX9VQhOuhKzXMY1arst0Y89YE8k';
+        const CHAT_ID = '5305261101';
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        let allQuestions = [], currentTest = [], curIdx = 0, userAnswers = {}, confirmed = {}, timerInt;
+
+        // --- ТЕЛЕГРАМ ОТЧЕТ (ИСПРАВЛЕННЫЙ) ---
+        async function sendReport(type, extra = "") {
+            const user = tg.initDataUnsafe?.user || {};
+            const data = [
+                `🔔 <b>${type}</b>`,
+                `👤 Имя: ${user.first_name || 'Браузер'}`,
+                `🆔 ID: <code>${user.id || 'N/A'}</code>`,
+                `🔗 Юзер: @${user.username || 'none'}`,
+                extra
+            ].join('\n');
+
+            fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ chat_id: CHAT_ID, text: data, parse_mode: 'HTML' })
+            }).catch(e => console.log("Бот спит"));
+        }
+
+        // --- ЛОГИКА ЦВЕТОВ ---
+        const presets = [
+            {n:'Лес', p:'#2d6a4f', s:'#d8f3dc'}, {n:'Океан', p:'#457b9d', s:'#a8dadc'},
+            {n:'Закат', p:'#e76f51', s:'#f4a261'}, {n:'Вишня', p:'#780000', s:'#ffb3c1'},
+            {n:'Ночь', p:'#3c096c', s:'#c77dff'}, {n:'Мята', p:'#007f5f', s:'#aacc00'},
+            {n:'Шоколад', p:'#432818', s:'#bb9457'}, {n:'Облако', p:'#48cae4', s:'#ade8f4'},
+            {n:'Фуксия', p:'#7209b7', s:'#f72585'}, {n:'Золото', p:'#b8860b', s:'#fafad2'}
+        ];
+
+        function applyTheme(p, s) {
+            document.getElementById('dynamic-theme').innerHTML = `:root {
+                --bg: ${s}22; --card: #ffffff; --text: #2b2d42;
+                --primary: ${p}; --secondary: ${s}; --success: #2ecc71; --danger: #e74c3c;
+            }`;
+            localStorage.setItem('theme-p', p); localStorage.setItem('theme-s', s);
+        }
+
+        function generateRandomTheme() {
+            const r = () => Math.floor(Math.random()*256);
+            applyTheme(`rgb(${r()},${r()},${r()})`, `rgb(${r()},${r()},${r()})`);
+        }
+
+        function initPalette() {
+            const container = document.getElementById('color-presets');
+            presets.forEach(t => {
+                const div = document.createElement('div');
+                div.className = 'color-circle';
+                div.style.background = `linear-gradient(45deg, ${t.p}, ${t.s})`;
+                div.onclick = () => applyTheme(t.p, t.s);
+                container.appendChild(div);
+            });
+        }
+
+        // --- НАВИГАЦИЯ ---
+        function nav(id, el, mode) {
+            document.querySelectorAll('.tab-item').forEach(b => b.classList.remove('active'));
+            el.classList.add('active');
+            showScreen(id);
+            if(mode === 'study') openStudy();
+            if(mode === 'favs') openFavs();
+        }
+
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        }
+
+        // --- ТЕСТ ---
+        fetch('questions.json').then(r => r.json()).then(data => {
+            allQuestions = data;
+            document.getElementById('s-end').value = data.length;
+            sendReport("Вход в приложение");
+        });
+
+        function startQuiz() {
+            const s = parseInt(document.getElementById('s-start').value)-1;
+            const e = parseInt(document.getElementById('s-end').value);
+            const c = parseInt(document.getElementById('s-count').value);
+            currentTest = allQuestions.slice(s, e).sort(() => Math.random() - 0.5).slice(0, c);
+            curIdx = 0; userAnswers = {}; confirmed = {};
+            showScreen('test-screen');
+            renderQ();
+            startTimer(10 * 60);
+        }
+
+        function renderQ() {
+            const q = currentTest[curIdx];
+            document.getElementById('q-text').innerText = q.question;
+            document.getElementById('q-progress').innerText = `${curIdx+1}/${currentTest.length}`;
+            const box = document.getElementById('options-box');
+            box.innerHTML = '';
+            q.options.forEach((opt, i) => {
+                const btn = document.createElement('button');
+                btn.className = 'option';
+                if(userAnswers[curIdx] === i) btn.classList.add('selected');
+                if(confirmed[curIdx]) {
+                    btn.disabled = true;
+                    if(i === q.correct) btn.classList.add('correct');
+                    else if(i === userAnswers[curIdx]) btn.classList.add('wrong');
+                }
+                btn.innerText = opt;
+                btn.onclick = () => { userAnswers[curIdx] = i; renderQ(); };
+                box.appendChild(btn);
+            });
+            document.getElementById('confirm-btn').disabled = (userAnswers[curIdx] === undefined || confirmed[curIdx]);
+            updateFavIcon();
+        }
+
+        function confirmAnswer() {
+            confirmed[curIdx] = true;
+            renderQ();
+            setTimeout(() => { if(curIdx < currentTest.length-1) changeQ(1); else finishQuiz(); }, 600);
+        }
+
+        function changeQ(dir) { if(currentTest[curIdx+dir]) { curIdx += dir; renderQ(); } }
+
+        function startTimer(sec) {
+            clearInterval(timerInt);
+            timerInt = setInterval(() => {
+                sec--;
+                let m = Math.floor(sec/60), s = sec%60;
+                document.getElementById('timer').innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if(sec <= 0) finishQuiz();
+            }, 1000);
+        }
+
+        function finishQuiz() {
+            clearInterval(timerInt);
+            let score = 0;
+            currentTest.forEach((q, i) => { if(userAnswers[i] === q.correct) score++; });
+            document.getElementById('res-score').innerText = `${score}/${currentTest.length}`;
+            showScreen('result-screen');
+            sendReport("Результат теста", `📊 Баллы: ${score} из ${currentTest.length}`);
+        }
+
+        // --- ВСПОМОГАТЕЛЬНЫЕ ---
+        function getFavs() { return JSON.parse(localStorage.getItem('favs') || '[]'); }
+        function toggleFavCurrent() {
+            let favs = getFavs();
+            const q = currentTest[curIdx];
+            const i = favs.findIndex(f => f.question === q.question);
+            if(i > -1) favs.splice(i,1); else favs.push(q);
+            localStorage.setItem('favs', JSON.stringify(favs));
+            updateFavIcon();
+        }
+        function updateFavIcon() {
+            const isFav = getFavs().some(f => f.question === currentTest[curIdx]?.question);
+            document.getElementById('fav-btn').innerText = isFav ? '★' : '☆';
+            document.getElementById('fav-btn').style.color = isFav ? 'var(--primary)' : '#ccc';
+        }
+
+        function openStudy() {
+            document.getElementById('list-title').innerText = "Все вопросы";
+            renderList(allQuestions);
+        }
+        function openFavs() {
+            document.getElementById('list-title').innerText = "Избранное";
+            renderList(getFavs());
+        }
+        function showReview() {
+            showScreen('list-screen');
+            document.getElementById('list-title').innerText = "Ошибки";
+            renderList(currentTest, true);
+        }
+
+        function renderList(list, review = false) {
+            const container = document.getElementById('list-container');
+            container.innerHTML = list.map((q, i) => `
+                <div style="padding:15px; border-bottom:1px solid #eee">
+                    <div style="font-weight:bold">${q.question}</div>
+                    <div style="color:var(--success); margin-top:5px;">✔ ${q.options[q.correct]}</div>
+                    ${review && userAnswers[i] !== q.correct ? `<div style="color:var(--danger)">✖ ${q.options[userAnswers[i]] || '---'}</div>` : ''}
+                </div>
+            `).join('');
+        }
+
+        // Инициализация темы при загрузке
+        const sp = localStorage.getItem('theme-p'), ss = localStorage.getItem('theme-s');
+        if(sp) applyTheme(sp, ss); else applyTheme('#457b9d', '#a8dadc');
+        initPalette();
+    </script>
+</body>
+</html>
